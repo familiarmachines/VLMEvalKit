@@ -94,6 +94,7 @@ from .reasonmap_plus import ReasonMap_Plus
 from .gsm8k_v import GSM8KVDataset
 from .emoset118k import EmoSet118K
 from .mmis import MMIS
+from .ge600 import GE600
 
 
 class ConcatDataset(ImageBaseDataset):
@@ -223,7 +224,7 @@ IMAGE_DATASET = [
     OmniEarthMCQBench, VisFactor, OSTDataset, OCRBench_v2, TreeBench, CVQA, M4Bench,
     AyaVisionBench, TopViewRS, VLMBias, MMHELIX, MedqbenchMCQDataset, MathCanvas,
     MedqbenchPairedDescriptionDataset, MedqbenchCaptionDataset, ChartMuseum, ChartQAPro, ReasonMap_Plus,
-    olmOCRBench, OceanOCRBench, MATBench, VLRMBench, RefCOCODataset, EmoSet118K, MMIS
+    olmOCRBench, OceanOCRBench, MATBench, VLRMBench, RefCOCODataset, EmoSet118K, MMIS, GE600
 ]
 
 VIDEO_DATASET = [
