@@ -5,6 +5,8 @@ import os
 import warnings
 
 import torch
+from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
+from PIL import Image
 
 from ..base import BaseModel
 from .prompt import Qwen3VLPromptMixin
@@ -428,3 +430,50 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             return self.generate_inner_vllm(message, dataset=dataset)
         else:
             return self.generate_inner_transformers(message, dataset=dataset)
+
+
+class Qwen3VLEmo(BaseModel):
+    def __init__(self, model_path, **kwargs):
+        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+            model_path, dtype='auto', device_map='auto',
+        )
+        self.model.eval()
+        torch.cuda.empty_cache()
+        self.processor = AutoProcessor.from_pretrained(model_path)
+
+        kwargs_default = {"max_new_tokens": 512, "use_cache": True}
+        kwargs_default.update(kwargs)
+        self.kwargs = kwargs_default
+
+    def generate_inner(self, message, dataset=None):
+        conversations = []
+        for m in message:
+            conv = {"role": "user", "content": []}
+            if m["type"] == "text":
+                conv['content'].append({"type": "text", "text": m["value"]})
+            elif m["type"] == "image":
+                pil_rgb = Image.open(m['value']).convert("RGB")
+                conv['content'].append({"type": "image", "image": pil_rgb})
+            conversations.append(conv)
+
+        # Preparation for inference
+        inputs = self.processor.apply_chat_template(
+            conversations,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt"
+        ).to(self.model.device)
+
+        # Inference: Generation of the output
+        with torch.inference_mode():
+            generated_ids = self.model.generate(**inputs, max_new_tokens=512)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        output_text = self.processor.batch_decode(
+            generated_ids_trimmed, skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )
+
+        return output_text[0]
