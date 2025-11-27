@@ -1220,6 +1220,9 @@ qwen3vl_series = {
     "Qwen3-VL-Emo": partial(
         Qwen3VLEmo,
         model_path="Qwen/Qwen3-VL-2B-Instruct",
+        lora_path="models/Qwen/Qwen3-VL-2B-Instruct-SFT-LoRA-EmoSet-1",
+        lora_adapter_name="qwen3-emo-adapter",
+        merge_lora=False,
         use_custom_prompt=False,
         use_vllm=False,
         temperature=0.7, 

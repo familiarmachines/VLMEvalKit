@@ -434,9 +434,6 @@ class Qwen3VLEmo(Qwen3VLPromptMixin, BaseModel):
     def __init__(
         self,
         model_path: str,
-        min_pixels: int | None = None,
-        max_pixels: int | None = None,
-        total_pixels: int | None = None,
         max_new_tokens: int = 32768,
         top_p: float = 0.8,
         top_k: int = 20,
@@ -447,17 +444,15 @@ class Qwen3VLEmo(Qwen3VLPromptMixin, BaseModel):
         **kwargs,
     ) -> None:
         super().__init__(use_custom_prompt=use_custom_prompt)
-        self.min_pixels = min_pixels
-        self.max_pixels = max_pixels
-        self.total_pixels = total_pixels
         self.max_new_tokens = max_new_tokens
         self.top_k = top_k
         self.top_p = top_p
         self.repetition_penalty = repetition_penalty
         self.presence_penalty = presence_penalty
         self.temperature = temperature
-        if self.total_pixels and self.total_pixels > 24576 * 32 * 32:
-            print('The total number of video tokens might too large, resulting in an overly long input sequence.')
+        self.lora_path = kwargs.pop('lora_path', None)
+        self.lora_adapter_name = kwargs.pop('lora_adapter_name', None)
+        self.merge_lora = kwargs.pop('merge_lora', False)
         self.generate_kwargs = dict(
             max_new_tokens=self.max_new_tokens,
             top_p=top_p,
@@ -465,34 +460,27 @@ class Qwen3VLEmo(Qwen3VLPromptMixin, BaseModel):
             temperature=temperature,
             repetition_penalty=repetition_penalty,
         )
-        self.fps = kwargs.pop('fps', 2)
-        self.nframe = kwargs.pop('nframe', 128)
-        self.FRAME_FACTOR = 2
 
         assert model_path is not None
         self.model_path = model_path
         from transformers import AutoProcessor, AutoModelForImageTextToText
-        # Use official Qwen3-Omni classes when model_path indicates omni
         self.processor = AutoProcessor.from_pretrained(model_path)
-
-        gpu_mems = get_gpu_memory()
-        max_gpu_mem = max(gpu_mems) if gpu_mems != [] else -1
-        assert max_gpu_mem > 0
-
         self.model = AutoModelForImageTextToText.from_pretrained(
                     model_path, torch_dtype='auto', device_map='auto', # attn_implementation='flash_attention_2'
         )
-        # Add peft LoRA adapter
-        """
-        try:
+        if self.lora_path and self.lora_adapter_name:
             from peft import PeftModel
-            self.model = PeftModel.from_pretrained(self.model, 'familiar-ai/logos-300d-lora', torch_dtype='auto', device_map='auto')
-        except Exception as err:
-            logging.critical("Please install peft via 'pip install peft'")
-            raise err
-        """
+            self.model = PeftModel.from_pretrained(
+                self.model,
+                self.lora_path,
+                device_map="auto",
+                torch_dtype="auto",
+                adapter_name=self.lora_adapter_name,
+            )
+            if self.merge_lora and hasattr(self.model, 'merge_and_unload'):
+                self.model = self.model.merge_and_unload()
+            logging.info(f'Loaded LoRA adapter from {self.lora_path}')
         self.model.eval()
-
         torch.cuda.empty_cache()
 
     def _prepare_content(self, inputs: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -500,15 +488,6 @@ class Qwen3VLEmo(Qwen3VLPromptMixin, BaseModel):
         for s in inputs:
             if s['type'] == 'image':
                 item = {'type': 'image', 'image': ensure_image_url(s['value'])}
-                if self.min_pixels is not None:
-                    item['min_pixels'] = self.min_pixels
-                if self.max_pixels is not None:
-                    item['max_pixels'] = self.max_pixels
-                if self.total_pixels is not None:
-                    item['total_pixels'] = self.total_pixels
-                for key in ['min_pixels', 'max_pixels', 'total_pixels', 'resized_height', 'resized_width']:
-                    if key in s and s[key] is not None:
-                        item[key] = s[key]
             elif s['type'] == 'text':
                 item = {'type': 'text', 'text': s['value']}
             else:

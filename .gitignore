@@ -210,3 +210,7 @@ GLM4.5*
 SenseNova*
 
 .DS_Store
+
+checkpoints/
+models/
+outputs/
