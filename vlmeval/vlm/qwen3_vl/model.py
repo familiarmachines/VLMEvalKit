@@ -5,8 +5,6 @@ import os
 import warnings
 
 import torch
-from transformers import AutoProcessor, Qwen3VLForConditionalGeneration
-from PIL import Image
 
 from ..base import BaseModel
 from .prompt import Qwen3VLPromptMixin
@@ -154,7 +152,7 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
                 )
             else:
                 self.model = AutoModelForImageTextToText.from_pretrained(
-                    model_path, torch_dtype='auto', device_map='auto', attn_implementation='flash_attention_2'
+                    model_path, torch_dtype='auto', device_map='auto', # attn_implementation='flash_attention_2'
                 )
             self.model.eval()
 
@@ -432,48 +430,132 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             return self.generate_inner_transformers(message, dataset=dataset)
 
 
-class Qwen3VLEmo(BaseModel):
-    def __init__(self, model_path, **kwargs):
-        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-            model_path, dtype='auto', device_map='auto',
+class Qwen3VLEmo(Qwen3VLPromptMixin, BaseModel):
+    def __init__(
+        self,
+        model_path: str,
+        min_pixels: int | None = None,
+        max_pixels: int | None = None,
+        total_pixels: int | None = None,
+        max_new_tokens: int = 32768,
+        top_p: float = 0.8,
+        top_k: int = 20,
+        temperature: float = 0.01,
+        repetition_penalty: float = 1.0,
+        presence_penalty: float = 1.5,
+        use_custom_prompt: bool = True,
+        **kwargs,
+    ) -> None:
+        super().__init__(use_custom_prompt=use_custom_prompt)
+        self.min_pixels = min_pixels
+        self.max_pixels = max_pixels
+        self.total_pixels = total_pixels
+        self.max_new_tokens = max_new_tokens
+        self.top_k = top_k
+        self.top_p = top_p
+        self.repetition_penalty = repetition_penalty
+        self.presence_penalty = presence_penalty
+        self.temperature = temperature
+        if self.total_pixels and self.total_pixels > 24576 * 32 * 32:
+            print('The total number of video tokens might too large, resulting in an overly long input sequence.')
+        self.generate_kwargs = dict(
+            max_new_tokens=self.max_new_tokens,
+            top_p=top_p,
+            top_k=top_k,
+            temperature=temperature,
+            repetition_penalty=repetition_penalty,
         )
-        self.model.eval()
-        torch.cuda.empty_cache()
+        self.fps = kwargs.pop('fps', 2)
+        self.nframe = kwargs.pop('nframe', 128)
+        self.FRAME_FACTOR = 2
+
+        assert model_path is not None
+        self.model_path = model_path
+        from transformers import AutoProcessor, AutoModelForImageTextToText
+        # Use official Qwen3-Omni classes when model_path indicates omni
         self.processor = AutoProcessor.from_pretrained(model_path)
 
-        kwargs_default = {"max_new_tokens": 512, "use_cache": True}
-        kwargs_default.update(kwargs)
-        self.kwargs = kwargs_default
+        gpu_mems = get_gpu_memory()
+        max_gpu_mem = max(gpu_mems) if gpu_mems != [] else -1
+        assert max_gpu_mem > 0
+
+        self.model = AutoModelForImageTextToText.from_pretrained(
+                    model_path, torch_dtype='auto', device_map='auto', # attn_implementation='flash_attention_2'
+        )
+        # Add peft LoRA adapter
+        """
+        try:
+            from peft import PeftModel
+            self.model = PeftModel.from_pretrained(self.model, 'familiar-ai/logos-300d-lora', torch_dtype='auto', device_map='auto')
+        except Exception as err:
+            logging.critical("Please install peft via 'pip install peft'")
+            raise err
+        """
+        self.model.eval()
+
+        torch.cuda.empty_cache()
+
+    def _prepare_content(self, inputs: list[dict[str, str]]) -> list[dict[str, str]]:
+        content = []
+        for s in inputs:
+            if s['type'] == 'image':
+                item = {'type': 'image', 'image': ensure_image_url(s['value'])}
+                if self.min_pixels is not None:
+                    item['min_pixels'] = self.min_pixels
+                if self.max_pixels is not None:
+                    item['max_pixels'] = self.max_pixels
+                if self.total_pixels is not None:
+                    item['total_pixels'] = self.total_pixels
+                for key in ['min_pixels', 'max_pixels', 'total_pixels', 'resized_height', 'resized_width']:
+                    if key in s and s[key] is not None:
+                        item[key] = s[key]
+            elif s['type'] == 'text':
+                item = {'type': 'text', 'text': s['value']}
+            else:
+                raise ValueError(f"Invalid message type: {s['type']}, {s}")
+            content.append(item)
+        return content
 
     def generate_inner(self, message, dataset=None):
-        conversations = []
-        for m in message:
-            conv = {"role": "user", "content": []}
-            if m["type"] == "text":
-                conv['content'].append({"type": "text", "text": m["value"]})
-            elif m["type"] == "image":
-                pil_rgb = Image.open(m['value']).convert("RGB")
-                conv['content'].append({"type": "image", "image": pil_rgb})
-            conversations.append(conv)
+        try:
+            from qwen_vl_utils import process_vision_info
+        except Exception as err:
+            logging.critical("Please install it via 'pip install qwen-vl-utils'")
+            raise err
 
-        # Preparation for inference
-        inputs = self.processor.apply_chat_template(
-            conversations,
-            tokenize=True,
-            add_generation_prompt=True,
-            return_dict=True,
-            return_tensors="pt"
-        ).to(self.model.device)
+        messages = []
+        messages.append({'role': 'user', 'content': self._prepare_content(message)})
 
-        # Inference: Generation of the output
-        with torch.inference_mode():
-            generated_ids = self.model.generate(**inputs, max_new_tokens=512)
-        generated_ids_trimmed = [
-            out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-        ]
-        output_text = self.processor.batch_decode(
-            generated_ids_trimmed, skip_special_tokens=True,
-            clean_up_tokenization_spaces=False
+        text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        images, _ = process_vision_info(
+                messages,
+                image_patch_size=16,
         )
 
-        return output_text[0]
+        inputs = self.processor(
+                text=text,
+                images=images,
+                do_resize=False,
+                return_tensors='pt',
+                **({}),
+        )
+
+        try:
+            inputs = inputs.to(self.model.device)
+            if hasattr(self.model, 'dtype'):
+                inputs = inputs.to(self.model.dtype)
+        except Exception:
+            inputs = inputs.to('cuda')
+
+        generated_ids = self.model.generate(
+                **inputs,
+                **self.generate_kwargs,
+        )
+        generated_ids = [
+                output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, generated_ids)
+        ]
+        out = self.processor.tokenizer.batch_decode(
+                generated_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
+        response = out[0]
+        return response
