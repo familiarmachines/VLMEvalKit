@@ -1,6 +1,6 @@
-from .image_base import ImageBaseDataset
-from .utils.vqa_eval import process_line, hit_calculate
-from ..smp import load, dump, d2df, np, osp, LMUDataRoot
+from vlmeval.dataset.image_base import ImageBaseDataset
+from vlmeval.dataset.utils.vqa_eval import process_line, hit_calculate
+from vlmeval.smp import load, dump, d2df, np, osp, LMUDataRoot
 
 class EmoSet118K(ImageBaseDataset):
     TYPE = 'VQA'
@@ -65,3 +65,39 @@ class EmoSet118K(ImageBaseDataset):
         cols = data[['answer', 'prediction']]
         dump(cols, eval_file.replace(f'.{suffix}', '_cols.csv'))
         return out
+
+
+if __name__ == '__main__':
+    import base64, random, os
+    from typing import Dict, Any, Iterable
+    import pandas as pd
+    from datasets import load_dataset
+
+    # use os to get HOME environment variable
+    HOME_DIR = os.environ.get("HOME", os.path.expanduser("~"))
+    TSV_FILE = os.path.join(HOME_DIR, 'LMUData', 'EmoSet118K.tsv')
+
+    ds = load_dataset("Woleek/EmoSet-118K", split="test", streaming=True)
+    ds = ds.decode(False)
+
+    def iter_candidates(ds) -> Iterable[Dict[str, Any]]:
+        for ex in ds:
+            if ex.get("emotion") is not None:
+                yield ex
+
+    emotions = set()
+    records = []
+
+    cand_stream = iter_candidates(ds)
+    for idx, item in enumerate(cand_stream):
+        print(idx, item['image_id'])
+        e = item['emotion']
+        b64 = base64.b64encode(item['image']['bytes']).decode('utf-8')
+        answer = e
+        r = dict(index=idx, image=b64, answer=answer)
+        records.append(r)
+        emotions.add(e)
+
+    print("Emotions found:", emotions)
+    pd.DataFrame(records).to_csv(TSV_FILE, sep='\t', index=False)
+    print(f"wrote {TSV_FILE} with {len(records)} rows")
