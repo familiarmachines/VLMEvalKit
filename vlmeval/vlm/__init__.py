@@ -116,3 +116,4 @@ from .logics import Logics_Thinking
 from .cosmos import Cosmos
 from .liquid import LFM2VL
 from .andesvl import AndesVL
+from .miniemo import MiniEmo
