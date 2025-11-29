@@ -43,16 +43,16 @@ class AndesVL(BaseModel):
         }]
         """
 
-        conversations = []
+        contents = []
         for m in message:
-            conv = {"role": "user", "content": []}
             if m["type"] == "text":
-                conv['content'].append({"type": "text", "text": m["value"]})
+                contents.append({"type": "text", "text": m["value"]})
             elif m["type"] == "image":
-                pil_rgb = Image.open(m['value']).convert("RGB")
-                conv['content'].append({"type": "image_url", "image_url": {"url": pil_rgb}})
-            conversations.append(conv)
-            
+                pil_rgb = Image.open(m["value"]).convert("RGB")
+                contents.append({"type": "image_url", "image_url": {"url": pil_rgb}})
+
+        conversations = [{"role": "user", "content": contents}]
+
         response = self.model.chat(conversations,
                                    self.tokenizer,
                                    self.image_processor,
