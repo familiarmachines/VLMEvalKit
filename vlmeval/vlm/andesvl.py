@@ -21,7 +21,6 @@ class AndesVL(BaseModel):
             model_path,
             trust_remote_code=True,
         )
-        self.tokenizer.pad_token = self.tokenizer.eos_token
         self.image_processor = CLIPImageProcessor.from_pretrained(
             model_path,
             trust_remote_code=True,
@@ -42,7 +41,6 @@ class AndesVL(BaseModel):
             ],
         }]
         """
-
         contents = []
         for m in message:
             if m["type"] == "text":

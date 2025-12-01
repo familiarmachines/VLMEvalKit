@@ -12,7 +12,7 @@ class MiniEmo(BaseModel):
                 device_map="auto",
                 dtype=torch.bfloat16,
                 trust_remote_code=True,
-                # attn_implementation="flash_attention_2",
+                attn_implementation="flash_attention_2",
             )
             .cuda()
             .eval()
