@@ -1220,9 +1220,9 @@ qwen3vl_series = {
     "Qwen3-VL-Emo": partial(
         Qwen3VLEmo,
         model_path="Qwen/Qwen3-VL-2B-Instruct",
-        # lora_path="models/Qwen/Qwen3-VL-2B-Instruct-SFT-LoRA-EmoSet-1",
-        # lora_adapter_name="qwen3-emo-adapter",
-        # merge_lora=False,
+        lora_path="familiar-ai/logos-emo-lora",
+        lora_adapter_name="qwen3-emo-adapter",
+        merge_lora=False,
         use_custom_prompt=False,
         temperature=0.7, 
         max_new_tokens=16384,
@@ -1958,6 +1958,10 @@ andesvl_series = {
     "AndesVL-0_6B": partial(AndesVL, model_path="OPPOer/AndesVL-0_6B-Instruct"),
 }
 
+miniemo_series = {
+    "MiniEmo": partial(MiniEmo, model_path="familiar-ai/MiniEmo-VL-2B-Instruct"),
+}
+
 supported_VLM = {}
 
 model_groups = [
@@ -1974,7 +1978,7 @@ model_groups = [
     long_vita_series, ristretto_series, kimi_series, aguvis_series, hawkvl_series,
     flash_vl, kimi_vllm_series, oryx_series, treevgr_series, varco_vision_series, qtunevl_series, 
     xvl_series, thyme_series, logics_series, cosmos_series, keye_series, qianfanvl_series, 
-    lfm2vl_series, rbdashmm_api_series_lmdeploy, interns1_series, andesvl_series
+    lfm2vl_series, rbdashmm_api_series_lmdeploy, interns1_series, andesvl_series, miniemo_series
 ]
 
 for grp in model_groups:
