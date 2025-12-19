@@ -430,7 +430,7 @@ class Qwen3VLChat(Qwen3VLPromptMixin, BaseModel):
             return self.generate_inner_transformers(message, dataset=dataset)
 
 
-class Qwen3VLEmo(Qwen3VLPromptMixin, BaseModel):
+class Qwen3VLFamiliar(Qwen3VLPromptMixin, BaseModel):
     def __init__(
         self,
         model_path: str,

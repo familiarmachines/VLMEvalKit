@@ -1217,11 +1217,11 @@ qwen3vl_series = {
         top_k=20,
         max_new_tokens=16384,
     ),
-    "Qwen3-VL-Emo": partial(
-        Qwen3VLEmo,
+    "Qwen3-VL-Familiar": partial(
+        Qwen3VLFamiliar,
         model_path="Qwen/Qwen3-VL-2B-Instruct",
-        lora_path="familiar-ai/logos-emo-lora",
-        lora_adapter_name="qwen3-emo-adapter",
+        lora_path="familiar-ai/Qwen3-VL-2B-GE-LoRA",
+        lora_adapter_name="qwen3-familiar-adapter",
         merge_lora=False,
         use_custom_prompt=False,
         temperature=0.7, 
